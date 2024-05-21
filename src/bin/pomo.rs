@@ -17,6 +17,9 @@ mod app {
     use hal::Clocks;
     use rtic_monotonics::nrf::rtc::Rtc0;
 
+    const TIME_RUNNING_SECS: u32 = 25;
+    const TIME_INBETWEEN_SECS: u32 = 10;
+
     #[shared]
     struct Shared {
         state_machine: PomoStateMachine,
@@ -35,7 +38,11 @@ mod app {
         Rtc0::start(ctx.device.RTC0, token);
 
         let mut state_machine = PomoStateMachine::new();
-        state_machine.start(Running { remaining: 25 }).unwrap();
+        state_machine
+            .start(Running {
+                remaining: TIME_RUNNING_SECS,
+            })
+            .unwrap();
 
         on_tick::spawn().ok();
 
@@ -88,7 +95,9 @@ mod app {
 
     impl Into<InBetween> for Running {
         fn into(self) -> InBetween {
-            InBetween { remaining: 10 }
+            InBetween {
+                remaining: TIME_INBETWEEN_SECS,
+            }
         }
     }
 
@@ -114,7 +123,9 @@ mod app {
 
     impl Into<Running> for InBetween {
         fn into(self) -> Running {
-            Running { remaining: 25 }
+            Running {
+                remaining: TIME_RUNNING_SECS,
+            }
         }
     }
 }
