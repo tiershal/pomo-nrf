@@ -5,8 +5,7 @@ use cortex_m_semihosting::debug;
 
 use defmt_rtt as _; // global logger
 
-// TODO(5) adjust HAL import
-use nrf52840_hal as _;
+pub use nrf52840_hal as hal;
 
 use panic_probe as _;
 
