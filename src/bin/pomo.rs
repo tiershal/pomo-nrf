@@ -9,18 +9,19 @@ use pomo_nrf::hal;
 mod app {
     use super::*;
 
-    use embedded_hal::delay::DelayNs;
+    use fugit::ExtU64;
+    use sfsm::{add_state_machine, IsState, SfsmError, State, StateMachine};
 
     use hal::Clocks;
     use rtic_monotonics::nrf::rtc::Rtc0;
 
     #[shared]
-    struct Shared {}
+    struct Shared {
+        state_machine: PomoStateMachine,
+    }
 
     #[local]
-    struct Local {
-        rtc0: Rtc0,
-    }
+    struct Local {}
 
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
@@ -31,18 +32,35 @@ mod app {
         let token = rtic_monotonics::create_nrf_rtc0_monotonic_token!();
         Rtc0::start(ctx.device.RTC0, token);
 
-        let rtc0 = Rtc0;
+        let mut state_machine = PomoStateMachine::new();
+        state_machine.start(Running { remaining: 25 }).unwrap();
 
         on_tick::spawn().ok();
 
-        (Shared {}, Local { rtc0 })
+        (Shared { state_machine }, Local {})
     }
 
-    #[task(local = [rtc0])]
-    async fn on_tick(ctx: on_tick::Context) {
+    #[task(shared = [state_machine])]
+    async fn on_tick(mut ctx: on_tick::Context) {
         loop {
-            defmt::println!("tick is happening");
-            ctx.local.rtc0.delay_ms(1000);
+            ctx.shared.state_machine.lock(|sm| {
+                sm.step().unwrap();
+            });
+
+            Rtc0::delay(1000u64.millis()).await;
+        }
+    }
+
+    add_state_machine!(pub PomoStateMachine, Running, [Running], []);
+
+    pub struct Running {
+        remaining: u32,
+    }
+
+    impl State for Running {
+        fn execute(&mut self) {
+            self.remaining = self.remaining.saturating_sub(1);
+            defmt::println!("seconds remaining: {}", self.remaining);
         }
     }
 }

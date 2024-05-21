@@ -25,6 +25,7 @@ embedded-hal = "1.0.0"
 fugit = { version = "0.3.7", features = ["defmt"] }
 rtic-monotonics = { version = "1.5.0", features = ["nrf52840"] }
 rtic-sync = "1.3.0"
+sfsm = "0.4.3"
 
 [dev-dependencies]
 defmt-test = "0.3.2"
