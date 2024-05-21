@@ -10,7 +10,9 @@ mod app {
     use super::*;
 
     use fugit::ExtU64;
-    use sfsm::{add_state_machine, IsState, SfsmError, State, StateMachine};
+    use sfsm::{
+        add_state_machine, IsState, SfsmError, State, StateMachine, TransitGuard, Transition,
+    };
 
     use hal::Clocks;
     use rtic_monotonics::nrf::rtc::Rtc0;
@@ -51,16 +53,68 @@ mod app {
         }
     }
 
-    add_state_machine!(pub PomoStateMachine, Running, [Running], []);
+    add_state_machine!(pub PomoStateMachine, Running, [Running, InBetween], [
+        Running => InBetween,
+        InBetween => Running,
+    ]);
 
     pub struct Running {
         remaining: u32,
     }
 
+    pub struct InBetween {
+        remaining: u32,
+    }
+
     impl State for Running {
+        fn entry(&mut self) {
+            defmt::println!("entering Running");
+        }
+
         fn execute(&mut self) {
             self.remaining = self.remaining.saturating_sub(1);
             defmt::println!("seconds remaining: {}", self.remaining);
+        }
+    }
+
+    impl Transition<InBetween> for Running {
+        fn guard(&self) -> TransitGuard {
+            match self.remaining {
+                0 => TransitGuard::Transit,
+                _ => TransitGuard::Remain,
+            }
+        }
+    }
+
+    impl Into<InBetween> for Running {
+        fn into(self) -> InBetween {
+            InBetween { remaining: 10 }
+        }
+    }
+
+    impl State for InBetween {
+        fn entry(&mut self) {
+            defmt::println!("entering InBetween");
+        }
+
+        fn execute(&mut self) {
+            self.remaining = self.remaining.saturating_sub(1);
+            defmt::println!("seconds remaining: {}", self.remaining);
+        }
+    }
+
+    impl Transition<Running> for InBetween {
+        fn guard(&self) -> TransitGuard {
+            match self.remaining {
+                0 => TransitGuard::Transit,
+                _ => TransitGuard::Remain,
+            }
+        }
+    }
+
+    impl Into<Running> for InBetween {
+        fn into(self) -> Running {
+            Running { remaining: 25 }
         }
     }
 }
