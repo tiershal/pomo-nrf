@@ -10,7 +10,8 @@ mod app {
 
     use fugit::ExtU64;
     use sfsm::{
-        add_state_machine, IsState, SfsmError, State, StateMachine, TransitGuard, Transition,
+        add_messages, add_state_machine, IsState, MessageError, PushMessage, ReceiveMessage,
+        SfsmError, State, StateMachine, TransitGuard, Transition,
     };
 
     use hal::{gpiote::Gpiote, Clocks};
@@ -39,6 +40,7 @@ mod app {
         state_machine
             .start(Running {
                 remaining: TIME_RUNNING_SECS,
+                do_pause: false,
             })
             .unwrap();
 
@@ -82,19 +84,47 @@ mod app {
         });
 
         defmt::println!("pressed");
+
+        ctx.shared.state_machine.lock(|sm| {
+            // Since the state machine can only be in one state at any given time, we could just fire all possible messages for this button
+            // and the state we're in can handle the message safely.
+            //
+            // We don't need to care about the result of the message being sent.
+            _ = PushMessage::<Running, DoPause>::push_message(sm, DoPause);
+            _ = PushMessage::<Paused, DoResume>::push_message(sm, DoResume);
+        });
     }
 
-    add_state_machine!(pub PomoStateMachine, Running, [Running, InBetween], [
+    add_state_machine!(pub PomoStateMachine, Running, [Running, InBetween, Paused], [
         Running => InBetween,
         InBetween => Running,
+        Running => Paused,
+        Paused => Running,
     ]);
+
+    add_messages!(PomoStateMachine, [
+        DoPause -> Running,
+        DoResume -> Paused,
+    ]);
+
+    // -- Messages
+    struct DoPause;
+    struct DoResume;
+    // -- Messages
 
     pub struct Running {
         remaining: u32,
+        do_pause: bool,
     }
 
     pub struct InBetween {
         remaining: u32,
+    }
+
+    impl ReceiveMessage<DoPause> for Running {
+        fn receive_message(&mut self, _message: DoPause) {
+            self.do_pause = true;
+        }
     }
 
     impl State for Running {
@@ -113,6 +143,53 @@ mod app {
             match self.remaining {
                 0 => TransitGuard::Transit,
                 _ => TransitGuard::Remain,
+            }
+        }
+    }
+
+    impl Transition<Paused> for Running {
+        fn guard(&self) -> TransitGuard {
+            self.do_pause.into()
+        }
+    }
+
+    pub struct Paused {
+        remaining: u32,
+        do_resume: bool,
+    }
+
+    impl ReceiveMessage<DoResume> for Paused {
+        fn receive_message(&mut self, _message: DoResume) {
+            self.do_resume = true;
+        }
+    }
+
+    impl State for Paused {
+        fn entry(&mut self) {
+            defmt::println!("entering Paused state");
+        }
+    }
+
+    impl Transition<Running> for Paused {
+        fn guard(&self) -> TransitGuard {
+            self.do_resume.into()
+        }
+    }
+
+    impl Into<Running> for Paused {
+        fn into(self) -> Running {
+            Running {
+                remaining: self.remaining,
+                do_pause: false,
+            }
+        }
+    }
+
+    impl Into<Paused> for Running {
+        fn into(self) -> Paused {
+            Paused {
+                remaining: self.remaining,
+                do_resume: false,
             }
         }
     }
@@ -149,6 +226,7 @@ mod app {
         fn into(self) -> Running {
             Running {
                 remaining: TIME_RUNNING_SECS,
+                do_pause: false,
             }
         }
     }
