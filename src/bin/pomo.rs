@@ -3,18 +3,17 @@
 
 use pomo_nrf as _;
 
-use pomo_nrf::hal;
-
 #[rtic::app(device = nrf52840_hal::pac, dispatchers = [SWI0_EGU0])]
 mod app {
-    use super::*;
+
+    use nrf52840_hal as hal;
 
     use fugit::ExtU64;
     use sfsm::{
         add_state_machine, IsState, SfsmError, State, StateMachine, TransitGuard, Transition,
     };
 
-    use hal::Clocks;
+    use hal::{gpiote::Gpiote, Clocks};
     use rtic_monotonics::nrf::rtc::Rtc0;
 
     const TIME_RUNNING_SECS: u32 = 25;
@@ -23,6 +22,7 @@ mod app {
     #[shared]
     struct Shared {
         state_machine: PomoStateMachine,
+        gpiote: Gpiote,
     }
 
     #[local]
@@ -30,8 +30,6 @@ mod app {
 
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
-        defmt::println!("init");
-
         Clocks::new(ctx.device.CLOCK).start_lfclk();
 
         let token = rtic_monotonics::create_nrf_rtc0_monotonic_token!();
@@ -44,12 +42,29 @@ mod app {
             })
             .unwrap();
 
+        let p0 = hal::gpio::p0::Parts::new(ctx.device.P0);
+        let button = p0.p0_11.into_pullup_input().degrade();
+
+        let gpiote = Gpiote::new(ctx.device.GPIOTE);
+        gpiote
+            .channel0()
+            .input_pin(&button)
+            .hi_to_lo()
+            .enable_interrupt();
+        gpiote.channel0().set();
+
         on_tick::spawn().ok();
 
-        (Shared { state_machine }, Local {})
+        (
+            Shared {
+                state_machine,
+                gpiote,
+            },
+            Local {},
+        )
     }
 
-    #[task(shared = [state_machine])]
+    #[task(shared = [state_machine], priority = 1)]
     async fn on_tick(mut ctx: on_tick::Context) {
         loop {
             ctx.shared.state_machine.lock(|sm| {
@@ -58,6 +73,15 @@ mod app {
 
             Rtc0::delay(1000u64.millis()).await;
         }
+    }
+
+    #[task(binds = GPIOTE, shared = [state_machine, gpiote], priority = 3)]
+    fn on_button(mut ctx: on_button::Context) {
+        ctx.shared.gpiote.lock(|gpiote| {
+            gpiote.channel0().event().reset();
+        });
+
+        defmt::println!("pressed");
     }
 
     add_state_machine!(pub PomoStateMachine, Running, [Running, InBetween], [
