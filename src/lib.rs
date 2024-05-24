@@ -1,6 +1,8 @@
 #![no_main]
 #![no_std]
 
+pub mod state;
+
 use cortex_m_semihosting::debug;
 
 use defmt_rtt as _; // global logger
