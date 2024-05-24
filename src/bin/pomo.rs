@@ -8,8 +8,6 @@ mod app {
 
     use nrf52840_hal as hal;
 
-    use fugit::ExtU64;
-
     use hal::{gpiote::Gpiote, Clocks};
     use pomo_nrf::state::{
         DoPause, DoResume, Paused, PomoStateMachine, Running, TIME_INTERVAL_MSECS,
@@ -68,12 +66,15 @@ mod app {
                 sm.step().unwrap();
             });
 
-            Rtc0::delay(TIME_INTERVAL_MSECS.millis()).await;
+            Rtc0::delay(TIME_INTERVAL_MSECS.convert()).await;
         }
     }
 
     #[task(binds = GPIOTE, shared = [state_machine, gpiote], priority = 3)]
     fn on_button(mut ctx: on_button::Context) {
+        // Once multiple buttons get implemented, we will need to handle which button has been pressed.
+        // We might not want to support multiple buttons being pressed at the same time, and some buttons
+        // might have priority in terms of state transitioning.
         ctx.shared.gpiote.lock(|gpiote| {
             gpiote.channel0().event().reset();
         });
