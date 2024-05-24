@@ -12,7 +12,8 @@ mod app {
 
     use hal::{gpiote::Gpiote, Clocks};
     use pomo_nrf::state::{
-        DoPause, DoResume, Paused, PomoStateMachine, Running, TIME_RUNNING_SECS,
+        DoPause, DoResume, Paused, PomoStateMachine, Running, TIME_INTERVAL_MSECS,
+        TIME_RUNNING_MSECS,
     };
     use rtic_monotonics::nrf::rtc::Rtc0;
     use sfsm::{PushMessage, StateMachine};
@@ -35,7 +36,7 @@ mod app {
 
         let mut state_machine = PomoStateMachine::new();
         state_machine
-            .start(Running::new(TIME_RUNNING_SECS))
+            .start(Running::new(TIME_RUNNING_MSECS))
             .unwrap();
 
         let p0 = hal::gpio::p0::Parts::new(ctx.device.P0);
@@ -67,10 +68,7 @@ mod app {
                 sm.step().unwrap();
             });
 
-            // 1 second is quite a long time to wait when it comes to handling state progression.
-            // Instead, we would probably want to reduce this wait time and hold an accumulator inside of the states that require timing.
-            // Having such a long delay between state steps could result in missing messages from various button presses.
-            Rtc0::delay(1000u64.millis()).await;
+            Rtc0::delay(TIME_INTERVAL_MSECS.millis()).await;
         }
     }
 
@@ -79,8 +77,6 @@ mod app {
         ctx.shared.gpiote.lock(|gpiote| {
             gpiote.channel0().event().reset();
         });
-
-        defmt::println!("pressed");
 
         ctx.shared.state_machine.lock(|sm| {
             // Since the state machine can only be in one state at any given time, we could just fire all possible messages for this button
